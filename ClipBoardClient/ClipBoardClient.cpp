@@ -3,6 +3,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include <time.h>
+#include <locale.h>
 #include "ClipBoardClient.h"
 
 HINSTANCE g_hInst = NULL;
@@ -30,21 +31,17 @@ void HotKey( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 		}
 	case 1033:
 		{
+			SendClip = !SendClip;
 			if(SendClip){
-				MessageBox( hWnd, "Õ³Ìù°å·¢ËÍÒÑ¹Ø±Õ", "Õ³Ìù°å¿ØÖÆÆ÷", MB_OK|MB_TOPMOST |MB_ICONSTOP);
-				SendClip = false;
-			}else{
-				SendClip = true;
+				MessageBox( hWnd, "Õ³Ìù°å·¢ËÍÒÑ¿ªÆô", "Õ³Ìù°å¿ØÖÆÆ÷", MB_OK|MB_TOPMOST |MB_ICONSTOP);
 			}
 			break;
 		}
 	case 1034:
 		{
+			RecvClip = !RecvClip;
 			if(RecvClip){
-				MessageBox( hWnd, "Õ³Ìù°å½ÓÊÕÒÑ¹Ø±Õ", "Õ³Ìù°å¿ØÖÆÆ÷", MB_OK|MB_TOPMOST |MB_ICONSTOP);
-				RecvClip = false;
-			}else{
-				RecvClip = true;
+				MessageBox( hWnd, "Õ³Ìù°å½ÓÊÕÒÑ¿ªÆô", "Õ³Ìù°å¿ØÖÆÆ÷", MB_OK|MB_TOPMOST |MB_ICONSTOP);
 			}
 			break;
 		}
@@ -54,12 +51,10 @@ void HotKey( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 }
 
 static UINT auPriorityList[] = { 
-	CF_TEXT, 
 	CF_UNICODETEXT,
-	CF_OEMTEXT,
 	CF_LOCALE,
-	CF_ENHMETAFILE, 
-	CF_BITMAP ,	
+	CF_OEMTEXT,
+	CF_TEXT, 
 }; 
 
 bool isNewAndUpdate( char* content )
@@ -91,6 +86,11 @@ void OnClipRead(HWND hWnd)
 	while( i-- )
 	if (OpenClipboard(hWnd)) {  
 		clipboard_format = GetPriorityClipboardFormat(auPriorityList, 6); 
+		if (clipboard_format==-1) {
+			CloseClipboard();
+			printf("Data unknown format: %s\n", GetLastError());
+			return;
+		}
 		pGlobal = GetClipboardData(clipboard_format);
 		if( pGlobal )
 		{
@@ -109,7 +109,10 @@ void OnClipRead(HWND hWnd)
 	}else{
 		Sleep(100);
 	}
-	printf("OnClipRead: %d, %s\n", data_size, clipboard_buffer);
+	if (clipboard_format==CF_UNICODETEXT)
+		wprintf(L"OnClipRead: %d, %s\n", data_size, (wchar_t*)clipboard_buffer);
+	else
+		printf("OnClipRead: %d, %s\n", data_size, clipboard_buffer);
 
 	bool isnew=isNewAndUpdate( clipboard_buffer );
 	if( (isnew || SendData ) && SendClip && flag ){
@@ -125,7 +128,10 @@ void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 	SendData = false;
 	if( !isNewAndUpdate( clipboard_data ) ) return;
 	if( !RecvClip ) return ;
-	printf("RECV OnClipWrite: %s\n\n", clipboard_data);
+	if (format==CF_UNICODETEXT)
+		wprintf(L"RECV OnClipWrite: %s\n\n", (wchar_t*)clipboard_data);
+	else
+		printf("RECV OnClipWrite: %s\n\n", clipboard_data);
 
 	HGLOBAL pWriteGlobal=NULL;
 	int i=5;
@@ -211,8 +217,10 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 		}
 		break;
 	case WM_CLIPBOARDUPDATE:
-		printf("WM_CLIPBOARDUPDATE\n");
-		OnClipRead(hWnd);
+		if (SendClip) {
+			printf("WM_CLIPBOARDUPDATE\n");
+			OnClipRead(hWnd);
+		}
 		break;
 	case WM_HOTKEY:
 		HotKey( hWnd, nMsg, wParam, lParam );
@@ -308,6 +316,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	bool debug=false;
 	DWORD nResponse=0;
 
+	setlocale(LC_ALL,"chs");
 	srand (time(NULL));
 	if( parseCmdline( lpCmdLine, &debug ) )initConsole();
 	if ( !ReadConfig() ) {

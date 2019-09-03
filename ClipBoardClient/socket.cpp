@@ -157,11 +157,13 @@ bool setClip( SOCKET Socket, int size )
 		}
 	}
 
-	unsigned int sendlen = size-4;
-	char *recvbuf = uncompress(  buf+4, &sendlen);
-	OnClipWrite(hwnd, *(int*)buf, recvbuf, sendlen);
+	if (RecvClip){
+		unsigned int sendlen = size-4;
+		char *recvbuf = uncompress(  buf+4, &sendlen);
+		OnClipWrite(hwnd, *(int*)buf, recvbuf, sendlen);
+		free(recvbuf);
+	}
 	free(buf);
-	free(recvbuf);
 	return true;
 }
 
