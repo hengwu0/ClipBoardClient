@@ -57,18 +57,30 @@ static UINT auPriorityList[] = {
 	CF_TEXT, 
 }; 
 
-bool isNewAndUpdate( char* content )
+bool mystrcmp(char* src, char* dst, int len)
+{
+	for(int i=0; i<len; i++)
+		if (src[i]!=dst[i]) return false;
+	return true;
+}
+
+bool isNewAndUpdate( char* content, int lenth )
 {
 	static char* old_content = (char*)calloc(1, 4);
-	if( content==NULL ) return false;
+	static unsigned int old_lenth=0;
+	while (lenth>0 && content[lenth-1]=='\0') lenth--;
+	if( content==NULL || lenth==0 ) return false;
 	WaitForSingleObject(hMutex,INFINITE);
-	if( !strcmp(old_content, content) ) 
+	if( lenth==old_lenth && mystrcmp(old_content, content, lenth) ) 
 	{
 		ReleaseMutex(hMutex);
 		return false;
 	}
 	free(old_content);
-	old_content = strdup(content);
+	old_content = (char*)malloc((lenth+1)*sizeof(char));
+	memcpy(old_content, content, lenth);
+	old_content[lenth] = '\0';
+	old_lenth = lenth;
 	ReleaseMutex(hMutex);
 	return true;
 }
@@ -114,7 +126,7 @@ void OnClipRead(HWND hWnd)
 	else
 		printf("OnClipRead: %d, %s\n", data_size, clipboard_buffer);
 
-	bool isnew=isNewAndUpdate( clipboard_buffer );
+	bool isnew=isNewAndUpdate( clipboard_buffer,  data_size);
 	if( (isnew || SendData ) && SendClip && flag ){
 		socket_send( 'M', clipboard_format, clipboard_buffer, data_size );
 		printf("DataSended: %s %s\n", isnew?"isNew":"notNew", SendData?"reSend":"");
@@ -126,7 +138,7 @@ void OnClipRead(HWND hWnd)
 void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 {
 	SendData = false;
-	if( !isNewAndUpdate( clipboard_data ) ) return;
+	if( !isNewAndUpdate( clipboard_data, data_size ) ) return;
 	if( !RecvClip ) return ;
 	if (format==CF_UNICODETEXT)
 		wprintf(L"RECV OnClipWrite: %s\n\n", (wchar_t*)clipboard_data);
