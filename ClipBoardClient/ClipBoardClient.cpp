@@ -9,6 +9,7 @@
 HINSTANCE g_hInst = NULL;
 bool SendData=false;
 HGLOBAL pWriteGlobal=NULL;
+static HANDLE hMutexWrite = CreateMutex(NULL,FALSE,NULL);
 int DEBUG_PORT=0;
 int DEST_PORT=0;
 char *DEST_IP=NULL;
@@ -145,7 +146,6 @@ void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 	else
 		printf("RECV OnClipWrite: %s\n\n", clipboard_data);
 
-	HGLOBAL pWriteGlobal=NULL;
 	int i=5;
 	HANDLE ret=NULL;
 	while(i--)
@@ -156,8 +156,13 @@ void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 			printf("OnClipWrite: data_size is 0!\n");
 			return ;
 		}
+		WaitForSingleObject(hMutexWrite,INFINITE);
+		if (pWriteGlobal!=NULL) {
+			GlobalFree(pWriteGlobal);
+		}
 		pWriteGlobal = GlobalAlloc(GMEM_MOVEABLE, data_size * sizeof(char));
 		if (pWriteGlobal == NULL) { 
+			ReleaseMutex(hMutexWrite);
 			CloseClipboard(); 
 			printf("OnClipWrite: pWriteGlobal alloc failed!\n");
 			Sleep(100);
@@ -165,6 +170,7 @@ void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 		}
 		LPTSTR  pGlobal = (LPTSTR  )GlobalLock(pWriteGlobal); 
 		if (pGlobal == NULL) { 
+			ReleaseMutex(hMutexWrite);
 			CloseClipboard(); 
 			printf("OnClipWrite: GlobalLock failed!\n");
 			Sleep(100);
@@ -174,6 +180,7 @@ void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 		GlobalUnlock(pWriteGlobal); 
 
 		ret = SetClipboardData(format, pWriteGlobal); 
+		ReleaseMutex(hMutexWrite);
 		if (ret == NULL) { 
 			CloseClipboard(); 
 			printf("OnClipWrite: SetClipboardData failed!\n");
@@ -242,7 +249,12 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 	case WM_CREATE:
 		break;
 	case  WM_DESTROYCLIPBOARD:
-		GlobalFree(pWriteGlobal);
+		WaitForSingleObject(hMutexWrite,INFINITE);
+		if (pWriteGlobal!=NULL) {
+			GlobalFree(pWriteGlobal);
+			pWriteGlobal = NULL;
+		}
+		ReleaseMutex(hMutexWrite);
 		break;
 	case WM_DESTROY:
 		Destory(hWnd);
