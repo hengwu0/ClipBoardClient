@@ -155,6 +155,7 @@ void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 			printf("OnClipWrite: data_size is 0!\n");
 			return ;
 		}
+		Sleep(100);
 		while (pWriteGlobal!=NULL)  Sleep(50);
 		pWriteGlobal = GlobalAlloc(GMEM_MOVEABLE, data_size * sizeof(char));
 		if (pWriteGlobal == NULL) { 
