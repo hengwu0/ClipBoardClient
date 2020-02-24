@@ -148,7 +148,7 @@
     <ClCompile Include="socket.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="clipboardclient.h" />
+    <ClInclude Include="ClipBoardClient.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

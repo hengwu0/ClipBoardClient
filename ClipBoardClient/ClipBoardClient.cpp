@@ -16,8 +16,8 @@ char* RESGIST_KEY=NULL;
 char myVERSION[4]={"1.0"};
 bool SendClip=true;
 bool RecvClip=true;
-
-static HANDLE hMutex = CreateMutex(NULL,FALSE,NULL);
+UINT ScreenSaver=0;
+UINT ScreenTimeout=0;
 
 void HotKey( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 {
@@ -64,25 +64,36 @@ bool mystrcmp(char* src, char* dst, int len)
 	return true;
 }
 
-bool isNewAndUpdate( char* content, int lenth )
+typedef struct {
+	UINT format;
+	char* clipboard_data;
+	DWORD data_size;
+} ClipData;
+static HANDLE hMutex = CreateMutex(NULL,FALSE,NULL);
+static ClipData clipdata={0, (char*)malloc(1), 0 };
+bool isNewAndUpdate( UINT format, char* content, DWORD lenth )
 {
-	static char* old_content = (char*)calloc(1, 4);
-	static unsigned int old_lenth=0;
-	while (lenth>0 && content[lenth-1]=='\0') lenth--;
 	if( content==NULL || lenth==0 ) return false;
 	WaitForSingleObject(hMutex,INFINITE);
-	if( lenth==old_lenth && mystrcmp(old_content, content, lenth) ) 
+	if( lenth==clipdata.data_size && mystrcmp(clipdata.clipboard_data, content, lenth) ) 
 	{
 		ReleaseMutex(hMutex);
 		return false;
 	}
-	free(old_content);
-	old_content = (char*)malloc((lenth+1)*sizeof(char));
-	memcpy(old_content, content, lenth);
-	old_content[lenth] = '\0';
-	old_lenth = lenth;
+	free(clipdata.clipboard_data);
+	clipdata.clipboard_data = (char*)malloc((lenth+1)*sizeof(char));
+	memcpy(clipdata.clipboard_data, content, lenth);
+	clipdata.clipboard_data[lenth] = '\0';
+	clipdata.data_size = lenth;
+	clipdata.format = format;
 	ReleaseMutex(hMutex);
 	return true;
+}
+ClipData ReadClipData(void) {
+	WaitForSingleObject(hMutex,INFINITE);
+	ClipData newdata = clipdata;
+	ReleaseMutex(hMutex);
+	return newdata;
 }
 
 void OnClipRead(HWND hWnd)
@@ -110,9 +121,10 @@ void OnClipRead(HWND hWnd)
 			if( clipboard_data )
 			{
 				data_size = GlobalSize(pGlobal);
-				clipboard_buffer=(char *)malloc(data_size*sizeof(char));
+				clipboard_buffer=(char *)malloc((data_size+1)*sizeof(char));
 				memcpy(clipboard_buffer, clipboard_data, data_size);
 				GlobalUnlock(pGlobal);
+				clipboard_buffer[data_size] = '\0';
 				flag=true;
 			}
 		}
@@ -126,7 +138,7 @@ void OnClipRead(HWND hWnd)
 	else
 		printf("OnClipRead: %d, %s\n", data_size, clipboard_buffer);
 
-	bool isnew=isNewAndUpdate( clipboard_buffer,  data_size);
+	bool isnew=isNewAndUpdate( clipboard_format, clipboard_buffer,  data_size);
 	if( (isnew || SendData ) && SendClip && flag ){
 		socket_send( 'M', clipboard_format, clipboard_buffer, data_size );
 		printf("DataSended: %s %s\n", isnew?"isNew":"notNew", SendData?"reSend":"");
@@ -135,15 +147,15 @@ void OnClipRead(HWND hWnd)
 	printf("\n");
 	if( clipboard_buffer!=NULL ) free(clipboard_buffer);
 }
+
 void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 {
 	SendData = false;
-	if( !isNewAndUpdate( clipboard_data, data_size ) ) return;
 	if( !RecvClip ) return ;
 	if (format==CF_UNICODETEXT)
-		wprintf(L"RECV OnClipWrite: %s\n\n", (wchar_t*)clipboard_data);
+		wprintf(L"RECV OnClipWrite: %d, %s\n", data_size, (wchar_t*)clipboard_data);
 	else
-		printf("RECV OnClipWrite: %s\n\n", clipboard_data);
+		printf("RECV OnClipWrite: %d, %s\n", data_size, (wchar_t*)clipboard_data);
 
 	int i=5;
 	HANDLE ret=NULL;
@@ -155,7 +167,6 @@ void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size)
 			printf("OnClipWrite: data_size is 0!\n");
 			return ;
 		}
-		Sleep(100);
 		while (pWriteGlobal!=NULL)  Sleep(50);
 		pWriteGlobal = GlobalAlloc(GMEM_MOVEABLE, data_size * sizeof(char));
 		if (pWriteGlobal == NULL) { 
@@ -203,21 +214,36 @@ void Create(HWND hWnd)
 	RegisterHotKey(hWnd,1032, MOD_CONTROL|MOD_ALT, 'Q');
 	RegisterHotKey(hWnd,1033, MOD_CONTROL|MOD_ALT, 'O');
 	RegisterHotKey(hWnd,1034, MOD_CONTROL|MOD_ALT, 'I');
-	SetTimer(hWnd, 1000, 300*1000, NULL );
+	int timeout=0;
+	SystemParametersInfo(SPI_GETSCREENSAVETIMEOUT, NULL, &timeout, SPIF_SENDWININICHANGE); 
+	if (timeout<10 || timeout > ScreenSaver)
+	{
+		printf("SCREENSAVETIMEOUT: %d, ignore close screensaver!\n", timeout);
+	} 
+	else
+		SetTimer(hWnd, TIME1, (timeout-9)*1000, NULL );
+	//SystemParametersInfo(SPI_SETSCREENSAVEACTIVE, FALSE, NULL, 0);
 }
 void Destory(HWND hWnd)
 {
 	WSACleanup(); 
 	RemoveClipboardFormatListener(hWnd);
-	KillTimer(hWnd, 1000);
 	UnregisterHotKey(hWnd, 1032);
 	UnregisterHotKey(hWnd, 1033);
+	SetThreadExecutionState(ES_CONTINUOUS);
+	KillTimer(hWnd, TIME1);
 }
 
 LRESULT CALLBACK WndProc( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 {
+	ClipData clip;
 	switch( nMsg )
-	{		
+	{
+	case WM_ClipWrite:
+		ScreenTimeout=0;
+		clip = ReadClipData();
+		OnClipWrite(hWnd, clip.format, clip.clipboard_data, clip.data_size);
+		break;
 	case WM_RECONNECT:
 		printf("WM_RECONNECT\n\n");
 		if ( !init_client_socket(hWnd) )
@@ -230,6 +256,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 		}
 		break;
 	case WM_CLIPBOARDUPDATE:
+		ScreenTimeout=0;
 		if (SendClip) {
 			printf("WM_CLIPBOARDUPDATE\n");
 			OnClipRead(hWnd);
@@ -239,10 +266,36 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 		HotKey( hWnd, nMsg, wParam, lParam );
 		break;
 	case WM_TIMER:
+		if (wParam==TIME1)
+		{
+			int timeout=0;
+			SystemParametersInfo(SPI_GETSCREENSAVETIMEOUT, NULL, &timeout, SPIF_SENDWININICHANGE); 
+			if (timeout<10 || timeout > ScreenSaver )
+			{
+				printf("SCREENSAVETIMEOUT: %d, ignore close screensaver!\n", timeout);
+				KillTimer(hWnd, TIME1);	
+				SetThreadExecutionState(ES_CONTINUOUS );
+			} else
+				SetTimer(hWnd, TIME1, (timeout-9)*1000, NULL );
+			if (ScreenTimeout<ScreenSaver) {
+				ScreenTimeout += (timeout-9);
+				if (ScreenTimeout>=ScreenSaver) {
+					time_t t = time(NULL);
+					char ch[90] = {0};
+					strftime(ch, sizeof(ch) - 1, "%Y-%m-%d %H:%M:%S", localtime(&t));
+					printf("%s WM_TIMER: timeout:%d ScreenTimeout:%d ScreenSaver:%d\n", ch, timeout, ScreenTimeout, ScreenSaver);
+					SetThreadExecutionState(ES_CONTINUOUS);
+				} else {
+					SystemParametersInfo(SPI_SETSCREENSAVETIMEOUT, timeout, NULL, SPIF_SENDWININICHANGE); 
+					SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
+				}
+			}
+		}
 		break;
 	case WM_CREATE:
 		break;
 	case  WM_DESTROYCLIPBOARD:
+		ScreenTimeout=0;
 		if (pWriteGlobal!=NULL) {
 			GlobalFree(pWriteGlobal);
 			pWriteGlobal = NULL;
@@ -339,6 +392,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 		WTSSendMessage(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, "Õ³Ìù°å¿ØÖÆÆ÷", strlen("Õ³Ìù°å¿ØÖÆÆ÷"), "Çë×¢²á£¡", strlen("Çë×¢²á£¡"), MB_OK, 0, &nResponse  , false);
 		return 0;
 	}
+	printf("ScreenSaver: %d\n", ScreenSaver);
 	init_socket();
 
 	g_hInst = hInstance;

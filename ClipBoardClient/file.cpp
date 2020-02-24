@@ -51,6 +51,7 @@ bool ReadConfig(void)
 	key[19] = 0; 	if(  !stricmp(key, "off")   ) RecvClip = false;
 	GetPrivateProfileString("Config", "SEND", NULL, key, 20, config );
 	key[19] = 0; 	if(  !stricmp(key, "off")   ) SendClip = false;
+	ScreenSaver = GetPrivateProfileInt("Config", "SCREENSAVER", 0, config );
 
 	GetPrivateProfileString("Regist", "KEY", NULL, key, 20, config );
 	GetPrivateProfileString("Config", "SERVER", NULL, net, 30, config );

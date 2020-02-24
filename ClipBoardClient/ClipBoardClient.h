@@ -1,4 +1,6 @@
 #define WM_RECONNECT WM_USER+2
+#define WM_ClipWrite WM_USER+1
+#define TIME1 1000
 
 #pragma comment(lib,"ws2_32.lib")
 #pragma comment(lib,"Wtsapi32.lib")
@@ -11,8 +13,9 @@ extern SOCKET destSocket;
 extern char myVERSION[4];
 extern bool SendClip;
 extern bool RecvClip;
+extern UINT ScreenSaver;
 
-void OnClipWrite(HWND hWnd, UINT format, char* clipboard_data, DWORD data_size);
+bool isNewAndUpdate( UINT format, char* content, DWORD lenth );
 void socket_send( char head, UINT send_format, char* content, UINT size, SOCKET Socket=destSocket );
 DWORD WINAPI  socket_recv( LPVOID lpParam  );
 bool ReadConfig(void);

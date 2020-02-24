@@ -160,7 +160,8 @@ bool setClip( SOCKET Socket, int size )
 	if (RecvClip){
 		unsigned int sendlen = size-4;
 		char *recvbuf = uncompress(  buf+4, &sendlen);
-		OnClipWrite(hwnd, *(int*)buf, recvbuf, sendlen);
+		if (isNewAndUpdate( *(int*)buf, recvbuf, sendlen ))
+			PostMessage(hwnd, WM_ClipWrite, NULL, NULL);
 		free(recvbuf);
 	}
 	free(buf);
