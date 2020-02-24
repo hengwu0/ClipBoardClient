@@ -57,6 +57,40 @@ static UINT auPriorityList[] = {
 	CF_TEXT, 
 }; 
 
+int getidle() {
+	int systemUptime = GetTickCount();  
+	int idleTicks = 0;
+
+	LASTINPUTINFO lastInputInfo;
+	lastInputInfo.cbSize = sizeof (lastInputInfo);
+	lastInputInfo.dwTime = 0;
+	if (GetLastInputInfo(&lastInputInfo)) {        
+		int lastInputTicks = (int)lastInputInfo.dwTime;
+		idleTicks = systemUptime - lastInputTicks;
+	}
+	return idleTicks;
+}
+
+void pressCtrl() {
+	DWORD dwFlages = 0;
+	UINT vk_Code = VK_RCONTROL;//VK_NUMLOCK
+
+	dwFlages |= KEYEVENTF_EXTENDEDKEY | KEYEVENTF_UNICODE;
+	WORD wScan = MapVirtualKey(vk_Code, 0);
+	INPUT Input[2]={0};
+	Input[0].type = INPUT_KEYBOARD;
+	Input[0].ki.wVk = vk_Code;
+	Input[0].ki.wScan = wScan;
+	Input[0].ki.dwFlags = dwFlages;
+
+	Input[1].type = INPUT_KEYBOARD;
+	Input[1].ki.wVk = vk_Code;
+	Input[1].ki.wScan = wScan;
+	Input[1].ki.dwFlags = dwFlages | KEYEVENTF_KEYUP;
+
+	SendInput(2, Input, sizeof(INPUT));
+}
+
 bool mystrcmp(char* src, char* dst, int len)
 {
 	for(int i=0; i<len; i++)
@@ -230,7 +264,7 @@ void Destory(HWND hWnd)
 	RemoveClipboardFormatListener(hWnd);
 	UnregisterHotKey(hWnd, 1032);
 	UnregisterHotKey(hWnd, 1033);
-	SetThreadExecutionState(ES_CONTINUOUS);
+	//SetThreadExecutionState(ES_CONTINUOUS);
 	KillTimer(hWnd, TIME1);
 }
 
@@ -274,7 +308,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 			{
 				printf("SCREENSAVETIMEOUT: %d, ignore close screensaver!\n", timeout);
 				KillTimer(hWnd, TIME1);	
-				SetThreadExecutionState(ES_CONTINUOUS );
+				//SetThreadExecutionState(ES_CONTINUOUS );
 			} else
 				SetTimer(hWnd, TIME1, (timeout-9)*1000, NULL );
 			if (ScreenTimeout<ScreenSaver) {
@@ -284,10 +318,13 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 					char ch[90] = {0};
 					strftime(ch, sizeof(ch) - 1, "%Y-%m-%d %H:%M:%S", localtime(&t));
 					printf("%s WM_TIMER: timeout:%d ScreenTimeout:%d ScreenSaver:%d\n", ch, timeout, ScreenTimeout, ScreenSaver);
-					SetThreadExecutionState(ES_CONTINUOUS);
+					//SetThreadExecutionState(ES_CONTINUOUS);
 				} else {
-					SystemParametersInfo(SPI_SETSCREENSAVETIMEOUT, timeout, NULL, SPIF_SENDWININICHANGE); 
-					SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
+					//SystemParametersInfo(SPI_SETSCREENSAVETIMEOUT, timeout, NULL, SPIF_SENDWININICHANGE); 
+					//SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
+					if (getidle()>30*1000) {
+						pressCtrl();
+					}
 				}
 			}
 		}
